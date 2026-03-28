@@ -121,9 +121,39 @@ async def event_late_stop(interaction: discord.Interaction):
     save_data()
 
     await interaction.response.send_message(
-        f" {user} late for {late_seconds} seconds for '{timer['event_name']}'",
+        f" {interaction.user.mention} is late for {late_seconds} seconds for '{timer['event_name']}'",
         ephemeral=True
     )
+
+@bot.tree.command(name = "event_list", description = "View current events for user")
+async def event_list(
+    interaction: discord.Interaction,
+    member: discord.Member = None
+):
+    target = member or interaction._user
+    user_id = str(target.id)
+    user = get_user(user_id)
+
+    if not user["events"]:
+        await interaction.response.send_message(
+            f"{target.display_name} has no events",
+            ephemeral = True
+        )
+        return
+    
+    message = f"{target.display_name}'s Events:\n\n"
+
+    for i,event in enumerate(user["events"], start = 1):
+        status = "Started" if event.get("started") else "Not started"
+
+        lateness = (
+            f"late: {event['lateness']}s"
+            if event.get("lateness") is not None
+            else "ON time"
+        )
+        message += (f"{i}. {event["name"]} - {event["datetime"]} "f"({status}, {lateness})\n")
+
+    await interaction.response.send_message(message, ephemeral = True)
 
 #autostart
 @tasks.loop(seconds = 30)
@@ -138,18 +168,19 @@ async def auto_start_events():
                 event_time = datetime.strptime(event["datetime"], "%Y-%m-%d %H:%M")
             except:
                 continue
-    if now>= event_time:
-        event["started"] = True
-        auto_timers[user_id] = {
-            "start": time.time(),
-            "event_name": event["name"]
-        }
-        print(f"Auto-started timer for {event['name']} ({user_id})")
+        if now>= event_time:
+            event["started"] = True
+            auto_timers[user_id] = {
+                "start": time.time(),
+                "event_name": event["name"]
+            }
+            print(f"Auto-started timer for {event['name']} ({user_id})")
 
     save_data()
 
 @bot.event
 async def on_ready():
+    await bot.tree.sync()
     auto_start_events.start()
     print(f"Logged in as {bot.user}")
 
